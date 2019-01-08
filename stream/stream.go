@@ -3,9 +3,8 @@ package stream
 import (
 	"fmt"
 
-	"github.com/pingcap/errors"
-
 	"github.com/go-redis/redis"
+	"github.com/pingcap/errors"
 
 	"sseirc/splitter/streamid"
 )
