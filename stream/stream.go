@@ -2,6 +2,7 @@ package stream
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/go-redis/redis"
 	"github.com/pingcap/errors"
@@ -16,8 +17,25 @@ type Stream struct {
 	stream string
 }
 
-func New(rdb *redis.Client, stream string) Stream {
-	return Stream{rdb, stream}
+var streamLock sync.RWMutex
+var streams map[string]*Stream = map[string]*Stream{}
+
+func New(rdb *redis.Client, stream string) *Stream {
+	streamLock.RLock()
+	defer streamLock.RUnlock()
+
+	// if it doesn't exist yet, create it
+	if streams[stream] == nil {
+		streamLock.RUnlock()
+
+		streamLock.Lock()
+		streams[stream] = &Stream{rdb, stream}
+		streamLock.Unlock()
+
+		streamLock.RLock()
+	}
+
+	return streams[stream]
 }
 
 func (s *Stream) Read(lastID StreamID) ([]redis.XMessage, error) {

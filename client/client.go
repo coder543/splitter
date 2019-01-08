@@ -19,7 +19,7 @@ type Client struct {
 	lastID StreamID
 	sse    *eventsource.Client
 	ctx    context.Context
-	stream stream.Stream
+	stream *stream.Stream
 }
 
 func New(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPath string) *Client {
