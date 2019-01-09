@@ -2,8 +2,8 @@ package splitter
 
 import (
 	"log"
-	"net"
 	"net/http"
+	"sseirc/splitter/stream"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -14,23 +14,20 @@ import (
 
 type StreamID = streamid.StreamID
 
-func Handle(w http.ResponseWriter, r *http.Request, rdb *redis.Client, stream string) {
-	client := client.New(w, r, rdb, stream)
+func Handle(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPath string) {
+	client := client.New(w, r, rdb, streamPath)
 	defer client.Shutdown()
 
 	// until the client disconnects, keep sending them updates
 	for client.Connected() {
 		vals, err := client.Read()
 
-		if err != nil {
-			if err, ok := err.(net.Error); ok && err.Timeout() {
-				// Block time elapsed
-				continue
-			}
-
+		if err == stream.ErrTimeout {
+			continue
+		} else if err == stream.ErrClosed {
 			// Something is wrong with Redis.
 			// Log it and then try again in 10 seconds.
-			log.Println(err)
+			log.Println("Redis Err", err)
 			blocked, err := client.Info("status", "degraded")
 			if blocked || err != nil {
 				log.Println("dropping client that can't be informed")
@@ -38,6 +35,8 @@ func Handle(w http.ResponseWriter, r *http.Request, rdb *redis.Client, stream st
 			}
 			time.Sleep(10 * time.Second)
 			continue
+		} else if err != nil {
+			log.Panicf("unknown err %+v\n", err)
 		}
 
 		for _, message := range vals {

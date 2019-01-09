@@ -14,8 +14,14 @@ type StreamID struct {
 	seq  int64
 }
 
+var Zero = MustParse("0-0")
+
 func Less(a, b StreamID) bool {
 	return a.time < b.time || (a.time == b.time && a.seq < b.seq)
+}
+
+func (a StreamID) Less(b StreamID) bool {
+	return Less(a, b)
 }
 
 func Parse(raw string) (StreamID, error) {

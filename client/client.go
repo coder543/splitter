@@ -96,5 +96,9 @@ func (c *Client) Info(key, value string) (bool, error) {
 }
 
 func (c *Client) Read() ([]redis.XMessage, error) {
-	return c.stream.Read(c.lastID)
+	vals, err := c.stream.Read(c.lastID)
+	if err == stream.ErrClosed {
+		c.stream = c.stream.Reopen()
+	}
+	return vals, err
 }
