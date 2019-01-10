@@ -18,9 +18,11 @@ func Handle(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPat
 	client := client.New(w, r, rdb, streamPath)
 	defer client.Shutdown()
 
+	ctx := r.Context()
+
 	// until the client disconnects, keep sending them updates
 	for client.Connected() {
-		vals, err := client.Read()
+		vals, err := client.Read(ctx)
 
 		if err == stream.ErrTimeout {
 			continue
@@ -42,13 +44,13 @@ func Handle(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPat
 		for _, message := range vals {
 			slowClient := 0
 			for {
-				blocked, err := client.Send(message.ID, message.Values)
+				blocked, err := client.Send(message.ID, message.Value)
 				if err != nil {
 					log.Panicf("%+v", err)
 				}
-				if blocked && slowClient < 5 {
+				if blocked && slowClient < 40 {
 					slowClient += 1
-					time.Sleep(25 * time.Millisecond)
+					time.Sleep(time.Duration(slowClient * int(time.Millisecond)))
 				} else if blocked {
 					log.Println("dropping slow client")
 					return

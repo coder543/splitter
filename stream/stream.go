@@ -2,10 +2,13 @@ package stream
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -17,14 +20,22 @@ import (
 type StreamID = streamid.StreamID
 
 type Stream struct {
-	closedLock  sync.RWMutex
-	closed      bool
-	rdb         *redis.Client
-	stream      string
-	lastID      string
-	messageLock sync.RWMutex
-	messages    []redis.XMessage
-	clientPing  chan struct{}
+	closedLock    sync.RWMutex
+	closed        bool
+	rdb           *redis.Client
+	stream        string
+	lastID        string
+	messages      []Message
+	messageLock   sync.RWMutex
+	messageSignal chan struct{}
+	clients       int64
+	reaper        *time.Timer
+}
+
+type Message struct {
+	ID       StreamID
+	StringID string
+	Value    []byte
 }
 
 var streamLock sync.RWMutex
@@ -42,15 +53,14 @@ func New(rdb *redis.Client, stream string) *Stream {
 		//ensure that nothing raced us here
 		if streams[stream] == nil {
 			streams[stream] = &Stream{
-				closed:     false,
-				rdb:        rdb,
-				stream:     stream,
-				lastID:     "0-0",
-				messages:   []redis.XMessage{},
-				clientPing: make(chan struct{}, 1),
+				closed:        false,
+				rdb:           rdb,
+				stream:        stream,
+				lastID:        "0-0",
+				messages:      []Message{},
+				messageSignal: make(chan struct{}),
 			}
 			go streams[stream].monitor()
-			go streams[stream].reaper()
 		}
 		streamLock.Unlock()
 
@@ -61,7 +71,6 @@ func New(rdb *redis.Client, stream string) *Stream {
 }
 
 func (s *Stream) Reopen() *Stream {
-	log.Println("reopen")
 	return New(s.rdb, s.stream)
 }
 
@@ -71,22 +80,34 @@ func (s *Stream) Closed() bool {
 	return s.closed
 }
 
-// ping alerts the reaper that this stream is not yet useless
-func (s *Stream) ping() {
-	s.clientPing <- struct{}{}
+func (s *Stream) waitChannel() <-chan struct{} {
+	s.messageLock.RLock()
+	defer s.messageLock.RUnlock()
+	return s.messageSignal
 }
 
-func (s *Stream) reaper() {
-	for !s.Closed() {
-		reapTime := time.NewTimer(30 * time.Second)
-		select {
-		case <-s.clientPing:
-			reapTime.Stop()
-			continue
-		case <-reapTime.C:
-			s.reap()
-			return
+func (s *Stream) waiting() {
+	atomic.AddInt64(&s.clients, 1)
+	s.closedLock.RLock()
+	if s.reaper != nil {
+		s.closedLock.RUnlock()
+		s.closedLock.Lock()
+		// ensure no one raced us here
+		if s.reaper != nil {
+			s.reaper.Stop()
+			s.reaper = nil
 		}
+		s.closedLock.Unlock()
+		return
+	}
+	s.closedLock.RUnlock()
+}
+
+func (s *Stream) done() {
+	if atomic.AddInt64(&s.clients, -1) == 0 {
+		s.closedLock.Lock()
+		s.reaper = time.AfterFunc(30*time.Second, s.reap)
+		s.closedLock.Unlock()
 	}
 }
 
@@ -108,6 +129,7 @@ func (s *Stream) reap() {
 
 	s.messageLock.Lock()
 	s.messages = nil
+	close(s.messageSignal) // awaken all sleeping clients
 	s.messageLock.Unlock()
 }
 
@@ -122,14 +144,18 @@ func (s *Stream) monitor() {
 			Count: 2000,
 
 			// a limited blocking time allows us to
-			// discard disconnected clients periodically
-			// in the absence of any new events
-			Block: 1500,
+			// exit cleanly if the Stream is closed
+			Block: 15000,
 		}).Result()
+
+		if s.Closed() {
+			// avoid saving any new messages if we're closed
+			return
+		}
 
 		if err != nil {
 			if err, ok := err.(net.Error); ok && err.Timeout() {
-				// Block time elapsed
+				// blocking time elapsed
 				continue
 			}
 			log.Println(err)
@@ -145,7 +171,21 @@ func (s *Stream) monitor() {
 		s.messageLock.Lock()
 		msgs := vals[0].Messages
 		s.lastID = msgs[len(msgs)-1].ID
-		s.messages = append(s.messages, msgs...)
+		for _, msg := range msgs {
+			value, err := json.Marshal(msg.Values)
+			if err != nil {
+				log.Printf("%+v\n", errors.Annotate(err, "failed to parse msg"))
+				s.reap()
+				return
+			}
+			s.messages = append(s.messages, Message{
+				ID:       streamid.MustParse(msg.ID),
+				StringID: msg.ID,
+				Value:    value,
+			})
+		}
+		close(s.messageSignal)                // signal all waiting clients
+		s.messageSignal = make(chan struct{}) // create new signal channel
 		s.messageLock.Unlock()
 	}
 }
@@ -153,49 +193,59 @@ func (s *Stream) monitor() {
 var ErrTimeout = errors.New("stream read timeout")
 var ErrClosed = errors.New("stream closed")
 
-func (s *Stream) readInner(lastID StreamID) []redis.XMessage {
+var maxMessages = 2000
+
+func (s *Stream) readInner(lastID StreamID) []Message {
 	s.messageLock.RLock()
 	defer s.messageLock.RUnlock()
 
 	if lastID == streamid.Zero && len(s.messages) > 0 {
-		newMessages := append([]redis.XMessage{}, s.messages...)
+		var newMessages []Message
+		// keep from letting peak memory usage be too high
+		if len(s.messages) > maxMessages {
+			newMessages = append(newMessages, s.messages[:maxMessages]...)
+		} else {
+			newMessages = append(newMessages, s.messages...)
+		}
 		return newMessages
 	}
 
-	// naive algorithm, find our last sent message by
-	// searching backwards until we either find it,
-	// or until we find that we have passed it, which
-	// would imply that our last is the very last message
-	// in the queue even now and we need to wait.
-	for index := len(s.messages) - 2; index >= 0; index-- {
-		msgID := streamid.MustParse(s.messages[index].ID)
-		if msgID.Less(lastID) {
-			break
+	newStart := 1 + sort.Search(len(s.messages), func(index int) bool {
+		msg := s.messages[index]
+		return msg.ID == lastID || lastID.Less(msg.ID)
+	})
+
+	// if this isn't the very last index or no result at all
+	if newStart < len(s.messages) {
+		stop := len(s.messages)
+		if stop-newStart > maxMessages {
+			stop = newStart + maxMessages
 		}
-		if msgID == lastID {
-			newMessages := append([]redis.XMessage{}, s.messages[index+1:]...)
-			return newMessages
-		}
+		newMessages := append([]Message{}, s.messages[newStart:stop]...)
+		return newMessages
 	}
 
 	return nil
 }
 
-func (s *Stream) Read(lastID StreamID) ([]redis.XMessage, error) {
-	deadline, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel() //in case we finish early
+func (s *Stream) Read(ctx context.Context, lastID StreamID) ([]Message, error) {
+	s.waiting()    // keep the stream alive while we're interested
+	defer s.done() // but let it know when we're done here
 
-	for deadline.Err() == nil && !s.Closed() {
-		s.ping() // keep the stream alive while we're interested
+	for ctx.Err() == nil && !s.Closed() {
 		newMessages := s.readInner(lastID)
 		if newMessages != nil {
-			log.Println(len(newMessages))
 			return newMessages, nil
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-s.waitChannel():
+			continue
+		case <-ctx.Done():
+			break
+		}
 	}
 
-	if deadline.Err() != nil {
+	if ctx.Err() != nil {
 		return nil, ErrTimeout
 	} else {
 		return nil, ErrClosed

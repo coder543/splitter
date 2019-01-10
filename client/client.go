@@ -57,25 +57,20 @@ func (c Client) Connected() bool {
 }
 
 // Send returns whether it was blocked, and whether an error occured
-func (c *Client) Send(rawID string, message map[string]interface{}) (bool, error) {
-	newID, err := streamid.Parse(rawID)
-	if err != nil {
-		return false, errors.AddStack(err)
-	}
-
+func (c *Client) Send(ID StreamID, message []byte) (bool, error) {
 	ev := &eventsource.Event{}
-	ev.ID(rawID)
+	ev.ID(ID.String())
 
-	err = json.NewEncoder(ev).Encode(message)
+	_, err := ev.Write(message)
 	if err != nil {
 		return false, errors.AddStack(err)
 	}
 
-	c.lastID = newID
+	c.lastID = ID
 
 	blocked, _ := c.sse.SendNonBlocking(ev)
 
-	return blocked, nil
+	return blocked, err
 }
 
 // Send returns whether it was blocked, and whether an error occured
@@ -95,8 +90,8 @@ func (c *Client) Info(key, value string) (bool, error) {
 	return blocked, nil
 }
 
-func (c *Client) Read() ([]redis.XMessage, error) {
-	vals, err := c.stream.Read(c.lastID)
+func (c *Client) Read(ctx context.Context) ([]stream.Message, error) {
+	vals, err := c.stream.Read(ctx, c.lastID)
 	if err == stream.ErrClosed {
 		c.stream = c.stream.Reopen()
 	}
