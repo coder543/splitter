@@ -44,7 +44,7 @@ func Handle(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPat
 		for _, message := range vals {
 			slowClient := 0
 			for {
-				blocked, err := client.Send(message.ID, message.Value)
+				blocked, err := client.Send(message)
 				if err != nil {
 					log.Panicf("%+v", err)
 				}

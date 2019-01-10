@@ -57,18 +57,18 @@ func (c Client) Connected() bool {
 }
 
 // Send returns whether it was blocked, and whether an error occured
-func (c *Client) Send(ID StreamID, message []byte) (bool, error) {
+func (c *Client) Send(msg stream.Message) (bool, error) {
 	ev := &eventsource.Event{}
-	ev.ID(ID.String())
+	ev.ID(msg.StringID)
 
-	_, err := ev.Write(message)
+	_, err := ev.Write(msg.Value)
 	if err != nil {
 		return false, errors.AddStack(err)
 	}
 
-	c.lastID = ID
+	c.lastID = msg.ID
 
-	blocked, _ := c.sse.SendNonBlocking(ev)
+	blocked, _ := c.sse.SendNonBlocking(*ev)
 
 	return blocked, err
 }
@@ -85,7 +85,7 @@ func (c *Client) Info(key, value string) (bool, error) {
 		return false, errors.AddStack(err)
 	}
 
-	blocked, _ := c.sse.SendNonBlocking(ev)
+	blocked, _ := c.sse.SendNonBlocking(*ev)
 
 	return blocked, nil
 }

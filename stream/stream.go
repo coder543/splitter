@@ -87,13 +87,16 @@ func (s *Stream) waitChannel() <-chan struct{} {
 }
 
 func (s *Stream) waiting() {
-	atomic.AddInt64(&s.clients, 1)
+	if s.Closed() {
+		return
+	}
 	s.closedLock.RLock()
+	atomic.AddInt64(&s.clients, 1)
 	if s.reaper != nil {
 		s.closedLock.RUnlock()
 		s.closedLock.Lock()
 		// ensure no one raced us here
-		if s.reaper != nil {
+		if s.reaper != nil && atomic.LoadInt64(&s.clients) != 0 {
 			s.reaper.Stop()
 			s.reaper = nil
 		}
@@ -104,9 +107,15 @@ func (s *Stream) waiting() {
 }
 
 func (s *Stream) done() {
+	if s.Closed() {
+		return
+	}
 	if atomic.AddInt64(&s.clients, -1) == 0 {
 		s.closedLock.Lock()
-		s.reaper = time.AfterFunc(30*time.Second, s.reap)
+		// ensure no one raced us here
+		if s.reaper == nil && atomic.LoadInt64(&s.clients) == 0 {
+			s.reaper = time.AfterFunc(30*time.Second, s.reap)
+		}
 		s.closedLock.Unlock()
 	}
 }
@@ -118,7 +127,7 @@ func (s *Stream) reap() {
 		return
 	}
 
-	log.Println("reaping stream!", s.stream)
+	log.Printf("reaping stream %s!", s.stream)
 	s.closed = true
 
 	streamLock.Lock()
