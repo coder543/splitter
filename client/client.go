@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sseirc/splitter/stream"
+	"sseirc/splitter/streamid"
 
 	"github.com/coder543/eventsource/v3"
 	"github.com/go-redis/redis"
 	"github.com/pingcap/errors"
-
-	"sseirc/splitter/stream"
-	"sseirc/splitter/streamid"
 )
 
 type StreamID = streamid.StreamID

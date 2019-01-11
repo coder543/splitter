@@ -7,14 +7,13 @@ import (
 	"log"
 	"net"
 	"sort"
+	"sseirc/splitter/streamid"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-redis/redis"
 	"github.com/pingcap/errors"
-
-	"sseirc/splitter/streamid"
 )
 
 type StreamID = streamid.StreamID

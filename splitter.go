@@ -3,13 +3,12 @@ package splitter
 import (
 	"log"
 	"net/http"
+	"sseirc/splitter/client"
 	"sseirc/splitter/stream"
+	"sseirc/splitter/streamid"
 	"time"
 
 	"github.com/go-redis/redis"
-
-	"sseirc/splitter/client"
-	"sseirc/splitter/streamid"
 )
 
 type StreamID = streamid.StreamID
