@@ -169,6 +169,7 @@ func (s *Stream) monitor() {
 			}
 			log.Println(err)
 			time.Sleep(1 * time.Second)
+			continue
 		}
 
 		if len(vals) != 1 {
