@@ -86,10 +86,11 @@ func (s *Stream) waitChannel() <-chan struct{} {
 }
 
 func (s *Stream) waiting() {
-	if s.Closed() {
+	s.closedLock.RLock()
+	// we're already inside RLock, so no need for Closed()
+	if s.closed {
 		return
 	}
-	s.closedLock.RLock()
 	atomic.AddInt64(&s.clients, 1)
 	if s.reaper != nil {
 		s.closedLock.RUnlock()
@@ -211,9 +212,9 @@ func (s *Stream) readInner(lastID StreamID) []Message {
 		var newMessages []Message
 		// keep from letting peak memory usage be too high
 		if len(s.messages) > maxMessages {
-			newMessages = append(newMessages, s.messages[:maxMessages]...)
+			newMessages = s.messages[:maxMessages]
 		} else {
-			newMessages = append(newMessages, s.messages...)
+			newMessages = s.messages[:]
 		}
 		return newMessages
 	}
@@ -229,8 +230,7 @@ func (s *Stream) readInner(lastID StreamID) []Message {
 		if stop-newStart > maxMessages {
 			stop = newStart + maxMessages
 		}
-		newMessages := append([]Message{}, s.messages[newStart:stop]...)
-		return newMessages
+		return s.messages[newStart:stop]
 	}
 
 	return nil
