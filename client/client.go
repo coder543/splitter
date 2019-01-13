@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sseirc/splitter/stream"
 	"sseirc/splitter/streamid"
+	"time"
 
 	"github.com/coder543/eventsource/v3"
 	"github.com/go-redis/redis"
@@ -22,7 +23,7 @@ type Client struct {
 }
 
 func New(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPath string) *Client {
-	sse := eventsource.NewClient(w, r)
+	sse := eventsource.NewClient(w, r, eventsource.ClientOptions{FlushLatency: 30 * time.Millisecond})
 	if sse == nil {
 		http.Error(w, "could not create SSE writer", http.StatusInternalServerError)
 		return nil
