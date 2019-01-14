@@ -167,7 +167,7 @@ func (s *Stream) monitor() {
 				// blocking time elapsed
 				continue
 			}
-			log.Println(err)
+			log.Printf("%+v\n", errors.AddStack(err))
 			time.Sleep(1 * time.Second)
 			continue
 		}
