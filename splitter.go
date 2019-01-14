@@ -3,9 +3,9 @@ package splitter
 import (
 	"log"
 	"net/http"
-	"sseirc/splitter/client"
-	"sseirc/splitter/stream"
-	"sseirc/splitter/streamid"
+	"github.com/coder543/splitter/client"
+	"github.com/coder543/splitter/stream"
+	"github.com/coder543/splitter/streamid"
 	"time"
 
 	"github.com/go-redis/redis"

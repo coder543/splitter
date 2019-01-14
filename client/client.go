@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sseirc/splitter/stream"
-	"sseirc/splitter/streamid"
+	"github.com/coder543/splitter/stream"
+	"github.com/coder543/splitter/streamid"
 	"time"
 
 	"github.com/coder543/eventsource/v3"

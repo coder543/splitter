@@ -7,7 +7,7 @@ import (
 	"log"
 	"net"
 	"sort"
-	"sseirc/splitter/streamid"
+	"github.com/coder543/splitter/streamid"
 	"sync"
 	"sync/atomic"
 	"time"
