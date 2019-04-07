@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"github.com/coder543/splitter/stream"
-	"github.com/coder543/splitter/streamid"
 	"time"
 
 	"github.com/coder543/eventsource/v3"
+	"github.com/coder543/splitter/stream"
+	"github.com/coder543/splitter/streamid"
 	"github.com/go-redis/redis"
 	"github.com/pingcap/errors"
 )
@@ -23,7 +23,7 @@ type Client struct {
 }
 
 func New(w http.ResponseWriter, r *http.Request, rdb *redis.Client, streamPath string) *Client {
-	sse := eventsource.NewClient(w, r, eventsource.ClientOptions{FlushLatency: 30 * time.Millisecond})
+	sse := eventsource.NewClient(w, r, eventsource.Options{FlushLatency: 30 * time.Millisecond})
 	if sse == nil {
 		http.Error(w, "could not create SSE writer", http.StatusInternalServerError)
 		return nil

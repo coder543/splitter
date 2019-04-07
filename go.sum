@@ -1,5 +1,5 @@
-github.com/coder543/eventsource/v3 v3.0.10 h1:75JkD+k9LctBgEVA4vk3wafjV3DPPG0NpfjBdUBlLqs=
-github.com/coder543/eventsource/v3 v3.0.10/go.mod h1:APVNpYdWKnryLaiesbCSB/h5hHOQVkfdSTkjgEcxhyo=
+github.com/coder543/eventsource/v3 v3.0.12 h1:vWOc2UVr80dQXF2Fm3W0XUkwkOT31w3Aa8ppiyCeKKY=
+github.com/coder543/eventsource/v3 v3.0.12/go.mod h1:APVNpYdWKnryLaiesbCSB/h5hHOQVkfdSTkjgEcxhyo=
 github.com/go-redis/redis v6.15.1+incompatible h1:BZ9s4/vHrIqwOb0OPtTQ5uABxETJ3NRuUNoSUurnkew=
 github.com/go-redis/redis v6.15.1+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8wamY7mA7PouImQ2Jvg6kA=
 github.com/pingcap/errors v0.11.0 h1:DCJQB8jrHbQ1VVlMFIrbj2ApScNNotVmkSNplu2yUt4=
